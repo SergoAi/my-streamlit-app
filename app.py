@@ -65,15 +65,15 @@ with col1:
 # ПОЛЕ 2: Ручной ввод URLs
 with col2:
     st.subheader("✍️ Ручной ввод URLs")
-    st.write("Добавляйте URLs для проверки:")
+    st.write("Добавляйте URLs или части URLs для поиска:")
     
     # Обновляем URLs в session_state
     for i in range(len(st.session_state.manual_urls)):
         st.session_state.manual_urls[i] = st.text_input(
-            f"URL {i+1}",
+            f"URL или часть URL {i+1}",
             value=st.session_state.manual_urls[i],
             key=f"url_{i}",
-            placeholder="https://example.com"
+            placeholder="https://example.com или products-chervyachnyj_motor-reduktor_nmrv"
         )
     
     # Кнопки управления
@@ -97,43 +97,83 @@ with col2:
 # ПОЛЕ 3: Результаты сравнения
 with col3:
     st.subheader("📊 Результаты сравнения")
-    st.write("URLs из ручного ввода, которые есть в Excel файле:")
+    st.write("Найденные URLs из Excel файла:")
     
     if uploaded_file is not None and excel_urls:
         valid_manual_urls = [url.strip() for url in st.session_state.manual_urls if url.strip()]
         
         if valid_manual_urls:
-            # Нормализуем для сравнения
-            excel_normalized = [url.strip().lower() for url in excel_urls]
-            manual_normalized = [url.strip().lower() for url in valid_manual_urls]
-            
-            # Ищем совпадения
-            found_urls = []
+            # Все найденные совпадения
+            all_matches = []
             not_found_urls = []
             
-            for url in valid_manual_urls:
-                if url.strip().lower() in excel_normalized:
-                    found_urls.append(url)
-                else:
-                    not_found_urls.append(url)
+            for search_term in valid_manual_urls:
+                found_any = False
+                
+                for excel_url in excel_urls:
+                    excel_url_clean = excel_url.strip()
+                    search_term_clean = search_term.strip().lower()
+                    excel_url_lower = excel_url_clean.lower()
+                    
+                    # Проверка полного совпадения (не чувствительно к регистру)
+                    if excel_url_lower == search_term_clean:
+                        all_matches.append({
+                            'search_term': search_term,
+                            'found_url': excel_url_clean,
+                            'match_type': '✅ ПОЛНОЕ СОВПАДЕНИЕ'
+                        })
+                        found_any = True
+                    
+                    # Проверка частичного совпадения в любой части URL
+                    elif search_term_clean in excel_url_lower:
+                        all_matches.append({
+                            'search_term': search_term,
+                            'found_url': excel_url_clean,
+                            'match_type': '🔍 ЧАСТИЧНОЕ СОВПАДЕНИЕ'
+                        })
+                        found_any = True
+                
+                # Если ничего не найдено для этого поискового запроса
+                if not found_any:
+                    not_found_urls.append(search_term)
             
             # Показываем результаты
-            if found_urls:
-                st.success(f"✅ Найдено совпадений: {len(found_urls)}")
-                with st.expander("📋 Показать найденные URLs"):
-                    for url in found_urls:
-                        st.write(f"• {url}")
             
-            if not_found_urls:
-                st.error(f"❌ Не найдено в файле: {len(not_found_urls)}")
-                with st.expander("👀 Показать отсутствующие URLs"):
-                    for url in not_found_urls:
-                        st.write(f"• {url}")
+            # Все найденные совпадения
+            if all_matches:
+                st.success(f"🎯 Найдено совпадений: {len(all_matches)}")
+                
+                # Группируем по поисковым запросам для удобства
+                search_terms_found = set(match['search_term'] for match in all_matches)
+                
+                for search_term in search_terms_found:
+                    with st.expander(f"🔎 Результаты для: `{search_term}`", expanded=True):
+                        matches_for_term = [m for m in all_matches if m['search_term'] == search_term]
                         
-            if not found_urls and not not_found_urls:
-                st.warning("🔍 Совпадений не найдено")
+                        for match in matches_for_term:
+                            st.write(f"**Тип совпадения:** {match['match_type']}")
+                            st.write(f"**Найденный URL:** {match['found_url']}")
+                            st.markdown("---")
+            
+            # Не найдено
+            if not_found_urls:
+                st.error(f"❌ Не найдено: {len(not_found_urls)}")
+                with st.expander("📝 Показать ненайденные запросы"):
+                    for search_term in not_found_urls:
+                        st.write(f"• `{search_term}`")
+                        
+            # Общая статистика
+            st.markdown("---")
+            full_count = len([m for m in all_matches if m['match_type'] == '✅ ПОЛНОЕ СОВПАДЕНИЕ'])
+            partial_count = len([m for m in all_matches if m['match_type'] == '🔍 ЧАСТИЧНОЕ СОВПАДЕНИЕ'])
+            
+            st.write(f"**📈 Статистика:**")
+            st.write(f"• Полных совпадений: {full_count}")
+            st.write(f"• Частичных совпадений: {partial_count}")
+            st.write(f"• Всего найдено: {len(all_matches)}")
+                        
         else:
-            st.info("📝 Введите URLs для проверки")
+            st.info("📝 Введите URLs или части URLs для поиска")
     else:
         st.info("📁 Загрузите Excel файл в первом поле")
 
@@ -141,9 +181,16 @@ with col3:
 st.markdown("---")
 st.subheader("ℹ️ Инструкция:")
 st.write("""
-1. **📁 Загрузите Excel файл** с URLs в первой колонке
-2. **✍️ Добавьте URLs** для проверки (кнопка '➕ Добавить URL')
-3. **📊 Смотрите результаты** - какие URLs есть в файле
+1. **📁 Загрузите Excel файл** с URLs в выбранной колонке
+2. **✍️ Добавьте URLs или части URLs** для поиска:
+   - Полный URL: `https://example.com/page.php`
+   - Часть URL: `page` (найдет все URLs содержащие "page")
+3. **📊 Смотрите результаты** с указанием типа совпадения
+
+**Пример:**
+- Поиск: `products-chervyachnyj_motor-reduktor_nmrv`
+- Результат: найдет URL `https://cable.ru/reductiongears/products-chervyachnyj_motor-reduktor_nmrv.php`
+- Тип: 🔍 ЧАСТИЧНОЕ СОВПАДЕНИЕ
 """)
 
-st.success("✅ Все зависимости установлены! Приложение готово к работе.")
+st.success("✅ Приложение готово к работе!")
